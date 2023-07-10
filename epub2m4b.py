@@ -7,7 +7,6 @@ import inflect
 import spacy
 import nltk
 import numpy as np
-import tempfile
 from scipy.io import wavfile
 from pydub import AudioSegment
 
