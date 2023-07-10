@@ -178,7 +178,7 @@ def process_text(text, nlp):
 
 # given a sentence, return a list of "good" divisions of the sentence
 def sentence_division(sentence):
-    if len(sentence) < 150:
+    if len(sentence) > 150:
         divisions = []
 
         if ";" in sentence:
