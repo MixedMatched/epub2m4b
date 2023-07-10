@@ -256,6 +256,7 @@ if __name__ == '__main__':
             self.nlp = nlp
         def handle_endtag(self, tag):
             if tag == "p" and not self.current_text.strip() == "":
+                self.current_text = process_text(self.current_text, self.nlp)
                 texts = nltk.sent_tokenize(self.current_text)
                 if args.verbose:
                     print("Paragraph: " + self.current_text)
@@ -278,7 +279,6 @@ if __name__ == '__main__':
             else:
                 self.current_text += " "
         def handle_data(self, data):
-            data = process_text(data, self.nlp)
             self.current_text += data
 
     chapter_number = 1
