@@ -196,6 +196,9 @@ def sentence_division(sentence):
                     division_counter += 1
                     divisions.append("")
 
+        for i in range(len(divisions)):
+            divisions[i] = divisions[i].strip()
+
         division = filter(lambda x: x != "", divisions)
         
         return divisions
