@@ -210,6 +210,11 @@ def sentence_division(sentence):
                             sentence_parts.append("")
                 break
         divisions = new_divisions
+
+    for i, division in enumerate(divisions):
+        divisions[i] = division.strip()
+
+    division = filter(lambda x: x != "", divisions)
         
     return divisions
 
