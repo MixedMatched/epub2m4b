@@ -179,25 +179,24 @@ def process_text(text, nlp):
 # given a sentence, return a list of "good" divisions of the sentence
 def sentence_division(sentence):
     divisions = []
-    if ";" in sentence:
-        divisions = sentence.split(";")
-    elif "," in sentence:
-        divisions = sentence.split(",")
-    else:
-        division_counter = 0
-        divisions.append("")
-        for word in sentence.split(" "):
-            divisions[division_counter] += word + " "
-            if len(divisions[division_counter]) > 125:
-                division_counter += 1
-                divisions.append("")
+    division_counter = 0
+    divisions.append("")
+    for word in sentence.split(" "):
+        divisions[division_counter] += word + " "
+        if len(divisions[division_counter]) > 125:
+            division_counter += 1
+            divisions.append("")
     
     # while there are sentences in division that are greater than 150 characters, split them
     while any([len(division) > 150 and " " in division for division in divisions]):
         new_divisions = divisions.copy()
         for i, sentence in enumerate(divisions):
             if len(sentence) > 150:
-                if "," in sentence:
+                if ";" in sentence:
+                    new_divisions.remove(i)
+                    for new_sentence in sentence.split(";").reverse():
+                        new_divisions.insert(i, new_sentence)
+                elif "," in sentence:
                     new_divisions.remove(i)
                     for new_sentence in sentence.split(",").reverse():
                         new_divisions.insert(i, new_sentence)
@@ -209,6 +208,7 @@ def sentence_division(sentence):
                         if len(sentence_parts[sentence_part_counter]) > len(sentence) / 2:
                             sentence_part_counter += 1
                             sentence_parts.append("")
+                break
         divisions = new_divisions
         
     return divisions
