@@ -268,5 +268,3 @@ if __name__ == '__main__':
 
             current_chapter_audio = []
             chapter_number += 1
-
-    
