@@ -176,6 +176,43 @@ def process_text(text, nlp):
 
     return text
 
+# given a sentence, return a list of "good" divisions of the sentence
+def sentence_division(sentence):
+    divisions = []
+    if ";" in sentence:
+        divisions = sentence.split(";")
+    elif "," in sentence:
+        divisions = sentence.split(",")
+    else:
+        division_counter = 0
+        divisions.append("")
+        for word in sentence.split(" "):
+            divisions[division_counter] += word + " "
+            if len(divisions[division_counter]) > 125:
+                division_counter += 1
+                divisions.append("")
+    
+    # while there are sentences in division that are greater than 150 characters, split them
+    while any([len(division) > 150 and " " in division for division in divisions]):
+        new_divisions = divisions.copy()
+        for i, sentence in enumerate(divisions):
+            if len(sentence) > 150:
+                if "," in sentence:
+                    new_divisions.remove(i)
+                    for new_sentence in sentence.split(",").reverse():
+                        new_divisions.insert(i, new_sentence)
+                else:
+                    sentence_parts = [""]
+                    sentence_part_counter = 0
+                    for word in sentence.split(" "):
+                        sentence_parts[sentence_part_counter] += word + " "
+                        if len(sentence_parts[sentence_part_counter]) > len(sentence) / 2:
+                            sentence_part_counter += 1
+                            sentence_parts.append("")
+        divisions = new_divisions
+        
+    return divisions
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         prog="epub2m4b",
@@ -216,7 +253,8 @@ if __name__ == '__main__':
     current_chapter_audio = []
     nlp = spacy.load("en_core_web_sm")
 
-    sentence_silence = np.zeros(int(.25 * SAMPLE_RATE))
+    div_silence = np.zeros(int(.05 * SAMPLE_RATE))
+    sentence_silence = np.zeros(int(.15 * SAMPLE_RATE))
     paragraph_silence = np.zeros(int(.5 * SAMPLE_RATE))
 
     class EpubHTMLParser(HTMLParser):
@@ -230,16 +268,18 @@ if __name__ == '__main__':
                 if args.verbose:
                     print("Paragraph: " + self.current_text)
                 for text in texts:
-                    if args.verbose:
-                        print("Rendering " + text + "...")
+                    for div in sentence_division(text):
+                        if args.verbose:
+                            print("Rendering " + div + "...")
 
-                    semantic_tokens = generate_text_semantic(
-                        text,
-                        history_prompt=args.speaker,
-                        min_eos_p=0.05,
-                    )
+                        semantic_tokens = generate_text_semantic(
+                            div,
+                            history_prompt=args.speaker,
+                            min_eos_p=0.05,
+                        )
 
-                    current_chapter_audio.append(semantic_to_waveform(semantic_tokens, history_prompt=args.speaker))
+                        current_chapter_audio.append(semantic_to_waveform(semantic_tokens, history_prompt=args.speaker))
+                        current_chapter_audio.append(div_silence.copy())
                     current_chapter_audio.append(sentence_silence.copy())
                 self.current_text = ""
                 current_chapter_audio.append(paragraph_silence.copy())
