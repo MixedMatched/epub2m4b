@@ -258,12 +258,8 @@ if __name__ == '__main__':
             parser.feed(item.get_body_content().decode("utf-8"))
 
             audio = np.concatenate(current_chapter_audio)
-            f = "temp.wav"
+            f = "chapter_" + str(chapter_number) + ".wav"
             wavfile.write(f, SAMPLE_RATE, audio)
-
-            audio = AudioSegment.from_wav(f)
-
-            audio.export("chapter_" + str(chapter_number) + ".mp3", format="mp3")
 
             current_chapter_audio = []
             chapter_number += 1
