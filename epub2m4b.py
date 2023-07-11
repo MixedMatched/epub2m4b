@@ -159,6 +159,7 @@ def process_text(text, nlp):
     text = text.replace("=", " equals ")
     text = text.replace("+", " plus ")
     text = text.replace("-", " minus ")
+    text = text.replace("&", " and ") 
 
     text = text.replace("Mr.", "Mister")
     text = text.replace("Mrs.", "Missus")
@@ -199,7 +200,7 @@ def sentence_division(sentence):
         for i in range(len(divisions)):
             divisions[i] = divisions[i].strip()
 
-        division = filter(lambda x: x != "", divisions)
+        divisions = list(filter(lambda x: x != "", divisions))
         
         return divisions
     else:
@@ -259,11 +260,11 @@ if __name__ == '__main__':
                 self.current_text = process_text(self.current_text, self.nlp)
                 texts = nltk.sent_tokenize(self.current_text)
                 if args.verbose:
-                    print("Paragraph: " + self.current_text)
+                    print("\nParagraph: " + self.current_text + "\n")
                 for text in texts:
                     for div in sentence_division(text):
                         if args.verbose:
-                            print("Rendering " + div + "...")
+                            print("Rendering \"" + div + "\"...")
 
                         semantic_tokens = generate_text_semantic(
                             div,
