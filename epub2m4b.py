@@ -160,6 +160,7 @@ def process_text(text, nlp):
     text = text.replace("+", " plus ")
     text = text.replace("-", " minus ")
     text = text.replace("&", " and ") 
+    text = text.replace("%", " percent ")
 
     text = text.replace("Mr.", "Mister")
     text = text.replace("Mrs.", "Missus")
@@ -255,6 +256,10 @@ if __name__ == '__main__':
             super().__init__()
             self.current_text = ""
             self.nlp = nlp
+            self.ignore_next = False
+        def handle_starttag(self, tag, attrs):
+            if tag == "sup":
+                self.ignore_next = True
         def handle_endtag(self, tag):
             if tag == "p" and not self.current_text.strip() == "":
                 self.current_text = process_text(self.current_text, self.nlp)
@@ -280,7 +285,10 @@ if __name__ == '__main__':
             else:
                 self.current_text += " "
         def handle_data(self, data):
-            self.current_text += data
+            if not self.ignore_next:
+                self.current_text += data
+            else:
+                self.ignore_next = False
 
     chapter_number = 1
     for (i, item) in enumerate(items):
