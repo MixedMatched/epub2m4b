@@ -147,7 +147,23 @@ def expand_acronyms(text):
         words[i] = pre_punctuation + words[i]
     return ' '.join(words)
 
-def process_text(text, nlp):
+def remove_parentheses(text):
+    text = text.replace(". (", ". ")
+    text = text.replace(", (", ", ")
+    text = text.replace("! (", "! ")
+    text = text.replace("? (", "? ")
+    text = text.replace(" (", ", ")
+
+    text = text.replace(").", ".")
+    text = text.replace("),", ",")
+    text = text.replace(")!", "!")
+    text = text.replace(")?", "?")
+    text = text.replace(") ", ", ")
+    text = text.replace(")", ",")
+
+    return text
+
+def reformat_punctuation(text):
     text = text.replace("’", "'")
     text = text.replace("“", '"')
     text = text.replace("”", '"')
@@ -156,12 +172,19 @@ def process_text(text, nlp):
     text = text.replace("--", ", ")
     text = text.replace("-", " ")
     text = text.replace("…", "...")
+
+    return text
+
+def reformat_symbols(text):
     text = text.replace("=", " equals ")
     text = text.replace("+", " plus ")
     text = text.replace("-", " minus ")
     text = text.replace("&", " and ") 
     text = text.replace("%", " percent ")
 
+    return text
+
+def reformat_titles(text):
     text = text.replace("Mr.", "Mister")
     text = text.replace("Mrs.", "Missus")
     text = text.replace("Ms.", "Miss")
@@ -171,10 +194,24 @@ def process_text(text, nlp):
     text = text.replace("Mt.", "Mount")
     text = text.replace("Ft.", "Fort")
 
+    return text
+
+def process_text(text, nlp):
+    text = remove_parentheses(text)
+    text = reformat_punctuation(text)
+    text = reformat_symbols(text)
+    text = reformat_titles(text)
+
     text = replace_numbers_with_words(text)
     text = text.replace("-", " ")
     text = remove_periods(text, nlp)
     text = expand_acronyms(text)
+
+    text = text.replace("  ", " ")
+    text = text.replace(" ,", ",")
+    text = text.replace(" .", ".")
+    text = text.replace(" !", "!")
+    text = text.replace(" ?", "?")
 
     return text
 
@@ -229,7 +266,7 @@ if __name__ == '__main__':
     for item in book.items:
         if isinstance(item, epub.EpubHtml):
             items.append(item)
-            print(len(items), ": ", item.get_name())
+            print(str(len(items)) + ": " + item.get_name())
 
     chapters = input("Enter the chapter numbers separated by dashes for a range or commas: ")
     chapters = chapters.split(",")
