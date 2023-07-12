@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
@@ -8,7 +9,6 @@ import spacy
 import nltk
 import numpy as np
 from scipy.io import wavfile
-from pydub import AudioSegment
 
 from bark.generation import (
     generate_text_semantic,
@@ -20,23 +20,30 @@ from bark import SAMPLE_RATE
 import argparse
 from html.parser import HTMLParser
 
-months = ["January", "February", "March", 
-            "April", "May", "June", 
-            "July", "August", "September",
-            "October", "November", "December"]
-
+# determine if a given string is a number, including decimals and commas
+# str -> bool
 def is_number(word):
     for char in word:
         if not (char.isdigit() or char == "." or char == ","):
             return False
     return True
 
+# in a string, replace all numbers with words
+# e.g. "I have 2 apples" -> "I have two apples"
+# str -> str
 def replace_numbers_with_words(text):
+    months = ["January", "February", "March", 
+            "April", "May", "June", 
+            "July", "August", "September",
+            "October", "November", "December"]
+    
     p = inflect.engine()
+
     words = text.split()
     for i in range(len(words)):
         word = words[i]
 
+        # remove punctuation from the beginning and end of the word
         post_punctuation = ""
         while len(word) > 0 and not word[-1].isalnum():
             post_punctuation += word[-1]
@@ -67,7 +74,7 @@ def replace_numbers_with_words(text):
                 words[i] = plural
             else: 
                 words[i] = p.number_to_words(number) + "s"
-        elif (word.endswith("th") or word.endswith("st") or word.endswith("nd") or word.endswith("rd")) and word[:-2].isdigit(): # ordinal number
+        elif (word.endswith("th") or word.endswith("st") or word.endswith("nd") or word.endswith("rd")) and word[:-2].isdigit(): # ordinal numbers
             number = word[:-2]
             words[i] = p.ordinal(p.number_to_words(number))
         elif word[:-1].isdigit():
@@ -76,12 +83,12 @@ def replace_numbers_with_words(text):
                 words[i] = ' '.join(p.number_to_words(number, group=2, wantlist=True)) + word[-1]
             else:
                 words[i] = p.number_to_words(number) + word[-1]
-        elif word.startswith("$") and is_number(word[1:]): 
+        elif word.startswith("$") and is_number(word[1:]): # dollar amount
             number = word[1:]
             words[i] = p.number_to_words(number, decimal = "point") + " dollar" + ("s" if number != "1" else "")
-        elif is_number(word):
+        elif is_number(word): # number with commas and/or decimals
             words[i] = p.number_to_words(word, decimal = "point")
-        else:
+        else: # numbers interspersed with letters or symbols
             num = ""
             new_word = ""
             for j in range(len(word)):
@@ -94,10 +101,14 @@ def replace_numbers_with_words(text):
                         num = ""                
                     break
             continue
+
+        # add punctuation back to the beginning and end of the word
         words[i] += post_punctuation
         words[i] = pre_punctuation + words[i]
     return ' '.join(words)
 
+# in a string, remove all periods that are not at the end of a sentence
+# str, Language -> str
 def remove_periods(text, nlp): 
     # Process the text
     doc = nlp(text)
@@ -113,12 +124,15 @@ def remove_periods(text, nlp):
             new_text += token.text_with_ws
     return new_text
 
+# in a string, replace all abbreviations with seperate words
+# str -> str
 def expand_acronyms(text):
     words = text.split()
 
     for i in range(len(words)):
         word = words[i]
 
+        # remove punctuation from the beginning and end of the word
         post_punctuation = ""
         while len(word) > 0 and not word[-1].isalnum():
             post_punctuation += word[-1]
@@ -134,19 +148,25 @@ def expand_acronyms(text):
             pre_punctuation += word[0]
             word = word[1:]
 
+        # ignore uppercase words which also have uppercase word neighbors
         if (i > 0 and words[i-1].isupper()) or (i < len(words) - 1 and words[i+1].isupper()):
             continue
+        # normal abbreviations
         elif word.isupper() and len(word) > 1:
             words[i] = ' '.join(word)
+        # abbreviations that are plural
         elif word[-1] == "s" and word[:-1].isupper() and len(word) > 2:
             words[i] = ' '.join(word[:-1]) + "s"
         else:
             continue
 
+        # add punctuation back to the beginning and end of the word
         words[i] += post_punctuation
         words[i] = pre_punctuation + words[i]
     return ' '.join(words)
 
+# in a string, remove all parentheses and replace them with commas
+# str -> str
 def remove_parentheses(text):
     text = text.replace(". (", ". ")
     text = text.replace(", (", ", ")
@@ -163,6 +183,8 @@ def remove_parentheses(text):
 
     return text
 
+# in a string, remove unusual punctuation and replace it
+# str -> str
 def reformat_punctuation(text):
     text = text.replace("’", "'")
     text = text.replace("“", '"')
@@ -175,6 +197,8 @@ def reformat_punctuation(text):
 
     return text
 
+# in a string, replace symbols with words
+# str -> str
 def reformat_symbols(text):
     text = text.replace("=", " equals ")
     text = text.replace("+", " plus ")
@@ -184,6 +208,8 @@ def reformat_symbols(text):
 
     return text
 
+# in a string, replace titles with words
+# str -> str
 def reformat_titles(text):
     text = text.replace("Mr.", "Mister")
     text = text.replace("Mrs.", "Missus")
@@ -196,6 +222,8 @@ def reformat_titles(text):
 
     return text
 
+# convert a string for use with TTS
+# str, Language -> str
 def process_text(text, nlp):
     text = remove_parentheses(text)
     text = reformat_punctuation(text)
@@ -215,29 +243,63 @@ def process_text(text, nlp):
 
     return text
 
+# given a string and a divider, find the largest substrings of the string
+# that are on either side of the divider
+# str, str -> [str]
+def find_largest_substrings(text, divider):
+    if divider not in text:
+        return [text]
+    
+    index = text.index(divider)
+    substr1 = text[:index]
+    substr2 = text[index + len(divider):]
+    
+    for i in range(index+1, len(text)):
+        if divider in text[i:]:
+            index = text[i:].index(divider) + i
+            new_substr1 = text[:index]
+            new_substr2 = text[index + len(divider):]
+            
+            if len(new_substr1) > len(substr1) and len(new_substr2) > len(substr2):
+                substr1, substr2 = new_substr1, new_substr2
+    
+    return [substr1, substr2]
+
 # given a sentence, return a list of "good" divisions of the sentence
+# str -> [str]
 def sentence_division(sentence):
+    # if the sentence is too long, divide it into smaller sentences
     if len(sentence) > 150:
         divisions = []
 
         if ";" in sentence:
-            for division in sentence.split(";"):
+            for division in find_largest_substrings(sentence, ";"):
                 divisions += sentence_division(division)
         elif "," in sentence:
-            for division in sentence.split(","):
+            for division in find_largest_substrings(sentence, ","):
+                divisions += sentence_division(division)
+        elif "and" in sentence:
+            for division in find_largest_substrings(sentence, "and"):
+                divisions += sentence_division(division)
+        elif "or" in sentence:
+            for division in find_largest_substrings(sentence, "or"):
+                divisions += sentence_division(division)
+        elif "but" in sentence:
+            for division in find_largest_substrings(sentence, "but"):
+                divisions += sentence_division(division)
+        elif "because" in sentence:
+            for division in find_largest_substrings(sentence, "because"):
+                divisions += sentence_division(division)
+        elif " " in sentence:
+            for division in find_largest_substrings(sentence, " "):
                 divisions += sentence_division(division)
         else:
-            division_counter = 0
-            divisions.append("")
-            for word in sentence.split(" "):
-                divisions[division_counter] += word + " "
-                if len(divisions[division_counter]) > 125:
-                    division_counter += 1
-                    divisions.append("")
+            divisions.append(sentence)
 
         for i in range(len(divisions)):
             divisions[i] = divisions[i].strip()
 
+        # remove empty divisions
         divisions = list(filter(lambda x: x != "", divisions))
         
         return divisions
@@ -252,6 +314,7 @@ if __name__ == '__main__':
 
     parser.add_argument('epub_path', type=str, help='Path to the epub file to convert.')
     parser.add_argument('-o', '--output', type=str, help='Path to the output m4b file.', default="output.m4b")
+    parser.add_argument('-d', '--directory', type=str, help='Path to the directory to store the temporary files.', default="temp")
     parser.add_argument('--speaker', type=str, help='Name of the speaker.', default="v2/en_speaker_6")
     parser.add_argument('-v', '--verbose', action='store_true', help='Prints out the text as it is being processed.')
 
@@ -336,8 +399,19 @@ if __name__ == '__main__':
             parser.feed(item.get_body_content().decode("utf-8"))
 
             audio = np.concatenate(current_chapter_audio)
-            f = "chapter_" + str(chapter_number) + ".wav"
+            f = os.path.join(args.directory, "chapter_" + str(chapter_number) + ".wav")
             wavfile.write(f, SAMPLE_RATE, audio)
+
+            # use ffmpeg to convert to mp3
+            subprocess.run(["ffmpeg", "-i", f, f.replace(".wav", ".mp3")])
 
             current_chapter_audio = []
             chapter_number += 1
+
+    # use ffmpeg to combine the mp3s into one m4b
+    concat_string = ""
+    for i in range(1, chapter_number):
+        concat_string += args.directory + "chapter_" + str(i) + ".mp3|"
+    concat_string = concat_string[:-1]
+
+    subprocess.run(["ffmpeg", "-i", "concat:" + concat_string, "-f", "mp4", args.output])
