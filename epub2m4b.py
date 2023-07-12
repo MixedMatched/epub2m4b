@@ -271,39 +271,38 @@ def find_largest_substrings(text, divider):
     
     return [substr1, substr2]
 
+dividers = [[";", ","],
+            ["and", "or", "but"],
+            ["because", " "]]
+
 # given a sentence, return a list of "good" divisions of the sentence
 # str -> [str]
 def sentence_division(sentence):
     # if the sentence is too long, divide it into smaller sentences
     if len(sentence) > 150:
-        divisions = []
+        possible_divisions = []
 
-        if ";" in sentence:
-            for division in find_largest_substrings(sentence, ";"):
-                divisions += sentence_division(division)
-        elif "," in sentence:
-            for division in find_largest_substrings(sentence, ","):
-                divisions += sentence_division(division)
-        elif "and" in sentence:
-            for division in find_largest_substrings(sentence, "and"):
-                divisions += sentence_division(division)
-        elif "or" in sentence:
-            for division in find_largest_substrings(sentence, "or"):
-                divisions += sentence_division(division)
-        elif "but" in sentence:
-            for division in find_largest_substrings(sentence, "but"):
-                divisions += sentence_division(division)
-        elif "because" in sentence:
-            for division in find_largest_substrings(sentence, "because"):
-                divisions += sentence_division(division)
-        elif " " in sentence:
-            for division in find_largest_substrings(sentence, " "):
-                divisions += sentence_division(division)
-        else:
-            divisions.append(sentence)
+        for i, divider_level in enumerate(dividers):
+            for divider in divider_level:
+                if divider in sentence:
+                    possible_divisions += (find_largest_substrings(sentence, divider), i)
 
+        if len(possible_divisions) == 0:
+            return [sentence]
+        
+        # sort the possible divisions by length and level
+        possible_divisions.sort(key=lambda x: 10 * (len(dividers) - x[1] + 1) - abs(len(x[0][0]) - len(x[0][1])))
+
+        # return the best division
+        divisions = possible_divisions[0][0]
+
+        # remove whitespace from the beginning and end of each division
         for i in range(len(divisions)):
             divisions[i] = divisions[i].strip()
+
+        # run sentence_division on each division
+        for i in range(len(divisions)):
+            divisions[i] = sentence_division(divisions[i])
 
         # remove empty divisions
         divisions = list(filter(lambda x: x != "", divisions))
