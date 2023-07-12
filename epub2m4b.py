@@ -250,18 +250,24 @@ def find_largest_substrings(text, divider):
     if divider not in text:
         return [text]
     
-    index = text.index(divider)
-    substr1 = text[:index]
-    substr2 = text[index + len(divider):]
-    
-    for i in range(index+1, len(text)):
-        if divider in text[i:]:
-            index = text[i:].index(divider) + i
-            new_substr1 = text[:index]
-            new_substr2 = text[index + len(divider):]
-            
-            if len(new_substr1) > len(substr1) and len(new_substr2) > len(substr2):
-                substr1, substr2 = new_substr1, new_substr2
+    substr1 = text[:len(text)/2]
+    substr2 = text[len(text)/2:]
+
+    index_right = substr1.rfind(divider)
+    index_left = substr2.find(divider)
+
+    if index_right == -1:
+        substr1 = text[:index_left]
+        substr2 = text[index_left:]
+    elif index_left == -1:
+        substr1 = text[:index_right]
+        substr2 = text[index_right:]
+    elif index_right > index_left:
+        substr1 = text[:index_right]
+        substr2 = text[index_right:]
+    else:
+        substr1 = text[:index_left]
+        substr2 = text[index_left:]
     
     return [substr1, substr2]
 
@@ -374,7 +380,7 @@ if __name__ == '__main__':
                         semantic_tokens = generate_text_semantic(
                             div,
                             history_prompt=args.speaker,
-                            min_eos_p=0.05,
+                            min_eos_p=0.05, # TODO: tune this
                         )
 
                         current_chapter_audio.append(semantic_to_waveform(semantic_tokens, history_prompt=args.speaker))
