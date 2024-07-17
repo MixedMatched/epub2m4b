@@ -1,8 +1,6 @@
 import os
 import subprocess
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-
 from ebooklib import epub
 import inflect
 import spacy
@@ -10,15 +8,13 @@ import nltk
 import numpy as np
 from scipy.io import wavfile
 
-from bark.generation import (
-    generate_text_semantic,
-    preload_models,
-)
-from bark.api import semantic_to_waveform
-from bark import SAMPLE_RATE
+from TTS.api import TTS
 
 import argparse
 from html.parser import HTMLParser
+
+SAMPLE_RATE = 24000
+
 
 # determine if a given string is a number, including decimals and commas
 # str -> bool
@@ -28,15 +24,16 @@ def is_number(word):
             return False
     return True
 
+
 # in a string, replace all numbers with words
 # e.g. "I have 2 apples" -> "I have two apples"
 # str -> str
 def replace_numbers_with_words(text):
-    months = ["January", "February", "March", 
-            "April", "May", "June", 
-            "July", "August", "September",
-            "October", "November", "December"]
-    
+    months = ["January", "February", "March",
+              "April", "May", "June",
+              "July", "August", "September",
+              "October", "November", "December"]
+
     p = inflect.engine()
 
     words = text.split()
@@ -58,23 +55,23 @@ def replace_numbers_with_words(text):
         while not word[0].isalnum():
             pre_punctuation += word[0]
             word = word[1:]
-        
-        if word.isdigit(): # number with just digits
-            if len(word) == 4: # year
+
+        if word.isdigit():  # number with just digits
+            if len(word) == 4:  # year
                 words[i] = ' '.join(p.number_to_words(word, group=2, wantlist=True))
-            elif (len(word) == 1 or len(word) == 2) and i > 0 and words[i - 1] in months: # day of month
+            elif (len(word) == 1 or len(word) == 2) and i > 0 and words[i - 1] in months:  # day of month
                 words[i] = p.ordinal(p.number_to_words(word))
-            else: # number
+            else:  # number
                 words[i] = p.number_to_words(word)
-        elif word.endswith("s") and word[:-1].isdigit(): # number with s
+        elif word.endswith("s") and word[:-1].isdigit():  # number with s
             number = word[:-1]
-            if len(number) == 4: # group of years
+            if len(number) == 4:  # group of years
                 nonplural = ' '.join(p.number_to_words(number, group=2, wantlist=True))
                 plural = p.plural(nonplural)
                 words[i] = plural
             else: 
                 words[i] = p.number_to_words(number) + "s"
-        elif (word.endswith("th") or word.endswith("st") or word.endswith("nd") or word.endswith("rd")) and word[:-2].isdigit(): # ordinal numbers
+        elif (word.endswith("th") or word.endswith("st") or word.endswith("nd") or word.endswith("rd")) and word[:-2].isdigit():  # ordinal numbers
             number = word[:-2]
             words[i] = p.ordinal(p.number_to_words(number))
         elif word[:-1].isdigit():
@@ -83,12 +80,12 @@ def replace_numbers_with_words(text):
                 words[i] = ' '.join(p.number_to_words(number, group=2, wantlist=True)) + word[-1]
             else:
                 words[i] = p.number_to_words(number) + word[-1]
-        elif word.startswith("$") and is_number(word[1:]): # dollar amount
+        elif word.startswith("$") and is_number(word[1:]):  # dollar amount
             number = word[1:]
-            words[i] = p.number_to_words(number, decimal = "point") + " dollar" + ("s" if number != "1" else "")
-        elif is_number(word): # number with commas and/or decimals
-            words[i] = p.number_to_words(word, decimal = "point")
-        else: # numbers interspersed with letters or symbols
+            words[i] = p.number_to_words(number, decimal="point") + " dollar" + ("s" if number != "1" else "")
+        elif is_number(word):  # number with commas and/or decimals
+            words[i] = p.number_to_words(word, decimal="point")
+        else:  # numbers interspersed with letters or symbols
             num = ""
             new_word = ""
             for j in range(len(word)):
@@ -98,7 +95,7 @@ def replace_numbers_with_words(text):
                     new_word += word[j]
                     if num != "":
                         new_word += p.number_to_words(num)
-                        num = ""                
+                        num = ""
                     break
             continue
 
@@ -107,22 +104,24 @@ def replace_numbers_with_words(text):
         words[i] = pre_punctuation + words[i]
     return ' '.join(words)
 
+
 # in a string, remove all periods that are not at the end of a sentence
 # str, Language -> str
-def remove_periods(text, nlp): 
+def remove_periods(text, nlp):
     # Process the text
     doc = nlp(text)
-    
+
     # Go through every word in the text
     new_text = ""
     for token in doc:
         # If word is a proper noun and not the last word in the text
-        if token.is_title and token.i<len(doc) - 1: 
+        if token.is_title and token.i < len(doc) - 1:
             new_text += token.text_with_ws.replace(".", "")
         # Else keep the word as it is
         else:
             new_text += token.text_with_ws
     return new_text
+
 
 # in a string, replace all abbreviations with seperate words
 # str -> str
@@ -165,6 +164,7 @@ def expand_acronyms(text):
         words[i] = pre_punctuation + words[i]
     return ' '.join(words)
 
+
 # in a string, remove all parentheses and replace them with commas
 # str -> str
 def remove_parentheses(text):
@@ -183,6 +183,7 @@ def remove_parentheses(text):
 
     return text
 
+
 # in a string, remove unusual punctuation and replace it
 # str -> str
 def reformat_punctuation(text):
@@ -197,16 +198,18 @@ def reformat_punctuation(text):
 
     return text
 
+
 # in a string, replace symbols with words
 # str -> str
 def reformat_symbols(text):
     text = text.replace("=", " equals ")
     text = text.replace("+", " plus ")
     text = text.replace("-", " minus ")
-    text = text.replace("&", " and ") 
+    text = text.replace("&", " and ")
     text = text.replace("%", " percent ")
 
     return text
+
 
 # in a string, replace titles with words
 # str -> str
@@ -221,6 +224,7 @@ def reformat_titles(text):
     text = text.replace("Ft.", "Fort")
 
     return text
+
 
 # convert a string for use with TTS
 # str, Language -> str
@@ -243,13 +247,14 @@ def process_text(text, nlp):
 
     return text
 
+
 # given a string and a divider, find the largest substrings of the string
 # that are on either side of the divider
 # str, str -> [str]
 def find_largest_substrings(text, divider):
     if divider not in text:
         return [text]
-    
+
     substr1 = text[:len(text)/2]
     substr2 = text[len(text)/2:]
 
@@ -268,12 +273,14 @@ def find_largest_substrings(text, divider):
     else:
         substr1 = text[:index_left]
         substr2 = text[index_left:]
-    
+
     return [substr1, substr2]
+
 
 dividers = [[";", ","],
             ["and", "or", "but"],
             ["because", " "]]
+
 
 # given a sentence, return a list of "good" divisions of the sentence
 # str -> [str]
@@ -289,7 +296,7 @@ def sentence_division(sentence):
 
         if len(possible_divisions) == 0:
             return [sentence]
-        
+
         # sort the possible divisions by length and level
         possible_divisions.sort(key=lambda x: 10 * (len(dividers) - x[1] + 1) - abs(len(x[0][0]) - len(x[0][1])))
 
@@ -306,7 +313,7 @@ def sentence_division(sentence):
 
         # remove empty divisions
         divisions = list(filter(lambda x: x != "", divisions))
-        
+
         return divisions
     else:
         return [sentence]
@@ -320,12 +327,13 @@ if __name__ == '__main__':
     parser.add_argument('epub_path', type=str, help='Path to the epub file to convert.')
     parser.add_argument('-o', '--output', type=str, help='Path to the output m4b file.', default="output.m4b")
     parser.add_argument('-d', '--directory', type=str, help='Path to the directory to store the temporary files.', default="temp")
-    parser.add_argument('--speaker', type=str, help='Name of the speaker.', default="v2/en_speaker_6")
+    parser.add_argument('--speaker', type=str, help='Path to the speaker audio file.', default="speaker.wav")
+    parser.add_argument('--model', type=str, help='Name of the TTS model.', default="tts_models/multilingual/multi-dataset/xtts_v2")
     parser.add_argument('-v', '--verbose', action='store_true', help='Prints out the text as it is being processed.')
 
     args = parser.parse_args()
 
-    preload_models()
+    tts = TTS(args.model, gpu=True)
 
     book = epub.read_epub(args.epub_path)
     
@@ -362,9 +370,11 @@ if __name__ == '__main__':
             self.current_text = ""
             self.nlp = nlp
             self.ignore_next = False
+
         def handle_starttag(self, tag, attrs):
             if tag == "sup":
                 self.ignore_next = True
+
         def handle_endtag(self, tag):
             if tag == "p" and not self.current_text.strip() == "":
                 self.current_text = process_text(self.current_text, self.nlp)
@@ -376,19 +386,16 @@ if __name__ == '__main__':
                         if args.verbose:
                             print("Rendering \"" + div + "\"...")
 
-                        semantic_tokens = generate_text_semantic(
-                            div,
-                            history_prompt=args.speaker,
-                            min_eos_p=0.05, # TODO: tune this
-                        )
+                        tts_wav = tts.tts(text=div, speaker_wav=args.speaker, language="en")
 
-                        current_chapter_audio.append(semantic_to_waveform(semantic_tokens, history_prompt=args.speaker))
+                        current_chapter_audio.append(tts_wav)
                         current_chapter_audio.append(div_silence.copy())
                     current_chapter_audio.append(sentence_silence.copy())
                 self.current_text = ""
                 current_chapter_audio.append(paragraph_silence.copy())
             else:
                 self.current_text += " "
+
         def handle_data(self, data):
             if not self.ignore_next:
                 self.current_text += data
@@ -420,3 +427,4 @@ if __name__ == '__main__':
     concat_string = concat_string[:-1]
 
     subprocess.run(["ffmpeg", "-i", "concat:" + concat_string, "-f", "mp4", args.output])
+
